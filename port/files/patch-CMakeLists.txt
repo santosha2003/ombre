@@ -1,0 +1,69 @@
+--- CMakeLists.txt.orig	2018-06-10 23:01:47.851344000 +0300
++++ CMakeLists.txt	2018-06-10 23:13:35.905165000 +0300
+@@ -28,6 +28,16 @@
+ # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #
+ # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
++list(INSERT CMAKE_MODULE_PATH 0
++  "${CMAKE_SOURCE_DIR}/cmake")
++include(CheckCCompilerFlag)
++include(CheckCXXCompilerFlag)
++include(CheckLibraryExists)
++include(CheckFunctionExists)
++
++if (IOS)
++    INCLUDE(CmakeLists_IOS.txt)
++endif()
+ 
+ cmake_minimum_required(VERSION 2.8.7)
+ 
+@@ -132,6 +143,7 @@
+ enable_testing()
+ 
+ option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
++option(BUILD_TESTS "Build tests." OFF)
+ 
+ # Check whether we're on a 32-bit or 64-bit system
+ if(CMAKE_SIZEOF_VOID_P EQUAL "8")
+@@ -150,12 +162,15 @@
+ 
+ # Check if we're on FreeBSD so we can exclude the local miniupnpc (it should be installed from ports instead)
+ # CMAKE_SYSTEM_NAME checks are commonly known, but specifically taken from libsdl's CMakeLists
+-if(CMAKE_SYSTEM_NAME MATCHES "kFreeBSD.*")
+-  set(FREEBSD TRUE)
+-elseif(CMAKE_SYSTEM_NAME MATCHES "DragonFly.*|FreeBSD")
++if(CMAKE_SYSTEM_NAME MATCHES "kFreeBSD.*|FreeBSD")
+   set(FREEBSD TRUE)
+ endif()
+ 
++# Check if we're on DragonFly BSD. See the README.md for build instructions.
++if(CMAKE_SYSTEM_NAME MATCHES "DragonFly.*")
++  set(DRAGONFLY TRUE)
++endif()
++
+ # Check if we're on OpenBSD. See the README.md for build instructions.
+ if(CMAKE_SYSTEM_NAME MATCHES "kOpenBSD.*|OpenBSD.*")
+   set(OPENBSD TRUE)
+@@ -192,10 +207,11 @@
+ 
+ if (BUILD_SHARED_LIBS)
+   message(STATUS "Building internal libraries with position independent code")
+-  set(PIC_FLAG "-fPIC")
++  add_definitions("-DBUILD_SHARED_LIBS")
+ else()
+   message(STATUS "Building internal libraries as static")
+ endif()
++set(PIC_FLAG "-fPIC")
+ 
+ if(MINGW)
+   string(REGEX MATCH "^[^/]:/[^/]*" msys2_install_path "${CMAKE_C_COMPILER}")
+@@ -242,6 +258,8 @@
+   message(STATUS "Using LMDB as default DB type")
+   set(BLOCKCHAIN_DB DB_LMDB)
+   add_definitions("-DDEFAULT_DB_TYPE=\"lmdb\"")
++ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_WANT_SEMUN")
++
+ elseif (DATABASE STREQUAL "berkeleydb")
+   find_package(BerkeleyDB)
+   if(NOT BERKELEY_DB)
+

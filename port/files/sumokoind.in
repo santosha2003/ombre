@@ -1,0 +1,91 @@
+#!/bin/sh
+# $FreeBSD: head/net-p2p/monero-cli/files/sumokoind.in 453798 2017-11-09 07:21:44Z vd $
+
+# PROVIDE: sumokoind
+# REQUIRE: LOGIN cleanvar
+# KEYWORD: shutdown
+
+# Add the following to %%LOCALBASE%%/etc/rc.conf.d/sumokoind to influence
+# the behavior of this script (default values are listed):
+#
+# sumokoind_enable="NO"  # change to "YES" to enable
+# sumokoind_user="sumokoin"
+# sumokoind_group="sumokoin"
+# sumokoind_data_dir="/var/db/sumokoin"
+# sumokoind_conf="%%PREFIX%%/etc/sumokoind.conf"
+# sumokoind_log="/var/log/sumokoin.log"
+# sumokoind_bind_addr="0.0.0.0"
+# sumokoind_bind_port="18080"
+# sumokoind_mine_for=""    # Do mining for the given address (empty: no mining)
+# sumokoind_mine_threads=""
+# sumokoind_mine_max_cpu_pct=""
+# sumokoind_extra_args=""  # See sumokoind --help
+
+. /etc/rc.subr
+
+name="sumokoind"
+rcvar=sumokoind_enable
+
+load_rc_config ${name}
+
+: ${sumokoind_enable:="NO"}
+: ${sumokoind_user:="sumokoin"}
+: ${sumokoind_group:="sumokoin"}
+: ${sumokoind_data_dir:="/root/.sumokoin"}
+: ${sumokoind_conf:="%%PREFIX%%/etc/${name}.conf"}
+: ${sumokoind_log:="/var/log/${name}.log"}
+: ${sumokoind_bind_addr:="0.0.0.0"}
+#: ${sumokoind_bind_port:="18080"}
+
+start_precmd="sumokoind_start_precmd"
+pidfile="/var/run/${name}.pid"
+command="%%PREFIX%%/bin/sumokoind"
+command_args=""
+command_args="${command_args} --data-dir=${sumokoind_data_dir}"
+command_args="${command_args} --detach"
+command_args="${command_args} --log-file=${sumokoind_log}"
+command_args="${command_args} --non-interactive"
+command_args="${command_args} --p2p-bind-ip=${sumokoind_bind_addr}"
+command_args="${command_args} --p2p-bind-port=${sumokoind_bind_port}"
+command_args="${command_args} --pidfile=${pidfile}"
+
+if [ -e "${sumokoind_conf}" ] ; then
+	command_args="${command_args} --config-file=${sumokoind_conf}"
+fi
+
+if [ -n "${sumokoind_mine_for}" ] ; then
+	a="--bg-mining-enable --start-mining=${sumokoind_mine_for}"
+
+	if [ -n "${sumokoind_mine_threads}" ] ; then
+		a="${a} --mining-threads=${sumokoind_mine_threads}"
+	fi
+
+	if [ -n "${sumokoind_mine_max_cpu_pct}" ] ; then
+		a="${a} --bg-mining-miner-target=${sumokoind_mine_max_cpu_pct}"
+	fi
+
+	command_args="${command_args} ${a}"
+fi
+
+command_args="${command_args} ${sumokoind_extra_args}"
+command_args="${command_args} >${sumokoind_data_dir}/sumokoind.stdout"
+command_args="${command_args} 2>${sumokoind_data_dir}/sumokoind.stderr"
+
+sumokoind_start_precmd()
+{
+	if [ ! -e "${pidfile}" ]; then
+		install -o ${sumokoind_user} -g ${sumokoind_group} -m 644 /dev/null "${pidfile}"
+	fi
+
+	if [ ! -e "${sumokoind_log}" ]; then
+		install -o ${sumokoind_user} -g ${sumokoind_group} -m 600 /dev/null "${sumokoind_log}"
+	fi
+
+	if [ ! -d "${sumokoind_data_dir}" ]; then
+		install -d -o ${sumokoind_user} -g ${sumokoind_group} -m 700 "${sumokoind_data_dir}"
+	fi
+
+	cd "${sumokoind_data_dir}"
+}
+
+run_rc_command "$1"
