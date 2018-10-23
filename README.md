@@ -72,5 +72,5 @@ As with many development projects, the repository on Github is considered to be 
 
 Please view [LICENSE](LICENSE)
 
-[![License](https://img.shields.io/badge/license-BSD3-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[![License](https://img.shields.io/badge/license-BSD3-blue.svg)](https://opensource.org/licenses/BSD-3-Clause) 
 
