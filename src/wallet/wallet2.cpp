@@ -750,6 +750,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
   size_t pk_index = 0;
   std::unordered_set<crypto::public_key> public_keys_seen;
   std::vector<tx_scan_info_t> tx_scan_info(tx.vout.size());
+  uint64_t total_received_1 = 0;
   while (!tx.vout.empty())
   {
     // if tx.vout is not empty, we loop through all tx pubkeys
@@ -783,13 +784,16 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     crypto::key_derivation derivation;
     generate_key_derivation(tx_pub_key, keys.m_view_secret_key, derivation);
 
-    // additional tx pubkeys and derivations for multi-destination transfers involving one or more subaddresses
-    std::vector<crypto::public_key> additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
+    std::vector<crypto::public_key> additional_tx_pub_keys;
     std::vector<crypto::key_derivation> additional_derivations;
-    for (size_t i = 0; i < additional_tx_pub_keys.size(); ++i)
-    {
-      additional_derivations.push_back({});
-      generate_key_derivation(additional_tx_pub_keys[i], keys.m_view_secret_key, additional_derivations.back());
+    if (pk_index == 1) {
+      // additional tx pubkeys and derivations for multi-destination transfers involving one or more subaddresses
+      additional_tx_pub_keys = get_additional_tx_pub_keys_from_extra(tx);
+      for (size_t i = 0; i < additional_tx_pub_keys.size(); ++i)
+      {
+        additional_derivations.push_back({});
+        generate_key_derivation(additional_tx_pub_keys[i], keys.m_view_secret_key, additional_derivations.back());
+      }
     }
 
     if (miner_tx && m_refresh_type == RefreshNoCoinbase)
@@ -953,6 +957,8 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
           + ", m_transfers.size() is " + boost::lexical_cast<std::string>(m_transfers.size()));
         if (kit == m_pub_keys.end())
         {
+
+          uint64_t amount = tx.vout[o].amount ? tx.vout[o].amount : tx_scan_info[o].amount;
           if (!pool)
           {
             m_transfers.push_back(boost::value_initialized<transfer_details>());
@@ -964,11 +970,11 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             td.m_txid = txid;
             td.m_key_image = ki[o];
             td.m_key_image_known = !m_watch_only;
-            td.m_amount = tx.vout[o].amount;
+            td.m_amount = amount;
             td.m_pk_index = pk_index - 1;
             td.m_subaddr_index = tx_scan_info[o].received->index;
             expand_subaddresses(tx_scan_info[o].received->index);
-            if (td.m_amount == 0)
+            if (tx.vout[o].amount == 0)
             {
               td.m_mask = mask[o];
               td.m_amount = amount[o];
@@ -991,6 +997,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             if (0 != m_callback)
               m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index);
           }
+          total_received_1 += amount;
         }
         else if (m_transfers[kit->second].m_spent || m_transfers[kit->second].amount() >= tx.vout[o].amount)
         {
@@ -998,12 +1005,24 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             << " from received " << print_money(tx.vout[o].amount) << " output already exists with "
             << (m_transfers[kit->second].m_spent ? "spent" : "unspent") << " "
             << print_money(m_transfers[kit->second].amount()) << ", received output ignored");
+
+          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info[o].received->index] < tx_scan_info[o].amount,
+              error::wallet_internal_error, "Unexpected values of new and old outputs");
+          tx_money_got_in_outs[tx_scan_info[o].received->index] -= tx_scan_info[o].amount;
+
         } else {
           LOG_ERROR("Public key " << epee::string_tools::pod_to_hex(kit->first)
             << " from received " << print_money(tx.vout[o].amount) << " output already exists with "
             << print_money(m_transfers[kit->second].amount()) << ", replacing with new output");
-          // The new larger output replaced a previous smaller one
-          tx_money_got_in_outs[tx_scan_info[o].received->index] -= tx.vout[o].amount;
+
+          THROW_WALLET_EXCEPTION_IF(tx_money_got_in_outs[tx_scan_info[o].received->index] < tx_scan_info[o].amount,
+              error::wallet_internal_error, "Unexpected values of new and old outputs");
+          THROW_WALLET_EXCEPTION_IF(m_transfers[kit->second].amount() > tx_scan_info[o].amount,
+              error::wallet_internal_error, "Unexpected values of new and old outputs");
+          tx_money_got_in_outs[tx_scan_info[o].received->index] -= m_transfers[kit->second].amount();
+
+          uint64_t amount = tx.vout[o].amount ? tx.vout[o].amount : tx_scan_info[o].amount;
+          uint64_t extra_amount = amount - m_transfers[kit->second].amount();
 
           if (!pool)
           {
@@ -1013,11 +1032,11 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             td.m_global_output_index = o_indices[o];
             td.m_tx = (const cryptonote::transaction_prefix&)tx;
             td.m_txid = txid;
-            td.m_amount = tx.vout[o].amount;
+            td.m_amount = amount;
             td.m_pk_index = pk_index - 1;
             td.m_subaddr_index = tx_scan_info[o].received->index;
             expand_subaddresses(tx_scan_info[o].received->index);
-            if (td.m_amount == 0)
+            if (tx.vout[o].amount == 0)
             {
               td.m_mask = mask[o];
               td.m_amount = amount[o];
@@ -1040,6 +1059,7 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
             if (0 != m_callback)
               m_callback->on_money_received(height, txid, tx, td.m_amount, td.m_subaddr_index);
           }
+          total_received_1 += extra_amount;
         }
       }
     }
@@ -1148,6 +1168,19 @@ void wallet2::process_new_transaction(const crypto::hash &txid, const cryptonote
     else if (get_payment_id_from_tx_extra_nonce(extra_nonce.nonce, payment_id))
     {
       LOG_PRINT_L2("Found unencrypted payment ID: " << payment_id);
+    }
+
+    uint64_t total_received_2 = 0;
+    for (const auto& i : tx_money_got_in_outs)
+      total_received_2 += i.second;
+    if (total_received_1 != total_received_2)
+    {
+      LOG_ERROR("**********************************************************************");
+      LOG_ERROR("Consistency failure in amounts received");
+      LOG_ERROR("Check transaction " << txid);
+      LOG_ERROR("**********************************************************************");
+      exit(1);
+      return;
     }
 
 	for (const auto& i : tx_money_got_in_outs)

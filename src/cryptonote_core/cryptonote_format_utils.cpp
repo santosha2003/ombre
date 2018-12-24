@@ -111,7 +111,12 @@ namespace cryptonote
   }
   //---------------------------------------------------------------
   // following formula: f(x) = 0.06 * (1 - sqrt(x)) where x = current_supply / max_supply S.T. current_supply <= max_supply
-  float get_project_block_reward_fee(float already_generated_coins) {
+  float get_project_block_reward_fee(float already_generated_coins, uint8_t hard_fork_version) {
+
+    if (hard_fork_version > 4) {
+      return CRYPTONOTE_PROJECT_BLOCK_REWARD;
+    }
+
     float current_dev_fee;
     if (already_generated_coins <= MONEY_SUPPLY) {
       current_dev_fee =  CRYPTONOTE_PROJECT_INITIAL_MULTIPLIER * (1 - std::sqrt((float)already_generated_coins / (float)MONEY_SUPPLY));
@@ -154,7 +159,7 @@ namespace cryptonote
       ", fee " << fee);
 #endif
 
-    float current_dev_fee = get_project_block_reward_fee(already_generated_coins);
+    float current_dev_fee = get_project_block_reward_fee(already_generated_coins, hard_fork_version);
 
     dev_block_reward = current_dev_fee * block_reward;
     miner_block_reward = (block_reward + fee) - dev_block_reward;
